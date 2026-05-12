@@ -1,0 +1,577 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI 數位影像工作坊 - v4.1 Pro</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        :root {
+            --bg-dark: #0f172a;
+            --panel-dark: #1e293b;
+            --accent-blue: #3b82f6;
+            --text-main: #f8fafc;
+        }
+
+        body {
+            background-color: var(--bg-dark);
+            color: var(--text-main);
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            overflow: hidden;
+            height: 100vh;
+        }
+
+        input[type=range] {
+            accent-color: var(--accent-blue);
+            height: 4px;
+            background: #334155;
+            border-radius: 5px;
+            appearance: none;
+        }
+
+        .canvas-container {
+            background-image: 
+                linear-gradient(45deg, #161e2e 25%, transparent 25%), 
+                linear-gradient(-45deg, #161e2e 25%, transparent 25%), 
+                linear-gradient(45deg, transparent 75%, #161e2e 75%), 
+                linear-gradient(-45deg, transparent 75%, #161e2e 75%);
+            background-size: 20px 20px;
+            background-position: 0 0, 0 10px, 10px -10px, -10px 0px;
+        }
+
+        .filter-card {
+            transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+            cursor: pointer;
+            border: 2px solid transparent;
+        }
+        .filter-card.active {
+            border-color: var(--accent-blue);
+            background-color: rgba(59, 130, 246, 0.1);
+        }
+
+        #mainCanvas {
+            max-width: 100%;
+            max-height: 100%;
+            object-fit: contain;
+            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+        }
+
+        .history-item {
+            border-left: 2px solid #334155;
+            transition: all 0.2s;
+        }
+        .history-item.active-state {
+            border-left-color: var(--accent-blue);
+            background: rgba(59, 130, 246, 0.1);
+        }
+
+        ::-webkit-scrollbar { width: 5px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: #334155; border-radius: 10px; }
+
+        .transform-btn {
+            background: #1e293b;
+            border: 1px solid #334155;
+            padding: 8px;
+            border-radius: 8px;
+            transition: all 0.2s;
+        }
+        .transform-btn:hover {
+            background: #334155;
+            color: #60a5fa;
+        }
+
+        /* 彩色滑桿特定色彩 */
+        #redRange { accent-color: #ef4444; }
+        #greenRange { accent-color: #10b981; }
+        #blueRange { accent-color: #3b82f6; }
+        #yellowRange { accent-color: #eab308; }
+        #tempRange { accent-color: #fb923c; }
+    </style>
+</head>
+<body class="flex flex-col md:flex-row h-screen">
+
+    <!-- 左側控制面板 -->
+    <aside class="w-full md:w-80 bg-[#1e293b] flex flex-col border-r border-slate-700 z-20">
+        <div class="p-5 border-b border-slate-700">
+            <h1 class="text-xl font-bold bg-gradient-to-r from-blue-400 to-indigo-400 bg-clip-text text-transparent">
+                Image Lab Pro <span class="text-xs font-mono text-slate-500">v4.1</span>
+            </h1>
+        </div>
+
+        <div class="flex-1 overflow-y-auto p-5 space-y-6">
+            <!-- 檔案操作 -->
+            <section class="space-y-3">
+                <input type="file" id="imageUpload" accept="image/*" class="hidden">
+                <div class="flex gap-2">
+                    <button onclick="document.getElementById('imageUpload').click()" class="flex-1 bg-blue-600 hover:bg-blue-500 text-white py-2 rounded-lg text-sm font-semibold transition-all">
+                        載入影像
+                    </button>
+                    <button id="downloadBtn" class="bg-slate-700 hover:bg-slate-600 text-white p-2 rounded-lg opacity-50 cursor-not-allowed" disabled>
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg>
+                    </button>
+                </div>
+                
+                <div class="flex gap-2 justify-between">
+                    <button id="rotateLeftBtn" class="transform-btn flex-1 flex flex-col items-center gap-1">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18"></path></svg>
+                        <span class="text-[9px]">左旋</span>
+                    </button>
+                    <button id="rotateRightBtn" class="transform-btn flex-1 flex flex-col items-center gap-1">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 5l7 7m0 0l-7 7m7-7H3"></path></svg>
+                        <span class="text-[9px]">右旋</span>
+                    </button>
+                    <button id="flipBtn" class="transform-btn flex-1 flex flex-col items-center gap-1">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7h8m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4"></path></svg>
+                        <span class="text-[9px]">翻轉</span>
+                    </button>
+                </div>
+            </section>
+
+            <!-- 基礎曝光與色溫 -->
+            <section class="space-y-4">
+                <h3 class="text-[10px] font-bold text-slate-500 uppercase tracking-widest border-b border-slate-700/50 pb-1">基礎曝光與色溫</h3>
+                <div class="space-y-3">
+                    <div class="space-y-1">
+                        <div class="flex justify-between text-[11px] text-slate-400">
+                            <span>亮度 Brightness</span>
+                            <span id="brightnessVal">0%</span>
+                        </div>
+                        <input type="range" id="brightnessRange" min="-100" max="100" value="0" class="w-full">
+                    </div>
+                    <div class="space-y-1">
+                        <div class="flex justify-between text-[11px] text-slate-400">
+                            <span>對比 Contrast</span>
+                            <span id="contrastVal">0%</span>
+                        </div>
+                        <input type="range" id="contrastRange" min="-100" max="100" value="0" class="w-full">
+                    </div>
+                    <div class="space-y-1">
+                        <div class="flex justify-between text-[11px] text-orange-400">
+                            <span>冷暖色調 Temperature</span>
+                            <span id="tempVal">0</span>
+                        </div>
+                        <input type="range" id="tempRange" min="-50" max="50" value="0" class="w-full">
+                    </div>
+                </div>
+            </section>
+
+            <!-- 智慧色彩微調 -->
+            <section class="space-y-4">
+                <h3 class="text-[10px] font-bold text-slate-500 uppercase tracking-widest border-b border-slate-700/50 pb-1">智慧色彩微調 (Selective)</h3>
+                <div class="grid grid-cols-1 gap-3">
+                    <div class="space-y-1">
+                        <div class="flex justify-between text-[10px] text-red-400">
+                            <span>強化紅色區塊</span>
+                            <span id="redVal">0</span>
+                        </div>
+                        <input type="range" id="redRange" min="-100" max="100" value="0" class="w-full">
+                    </div>
+                    <div class="space-y-1">
+                        <div class="flex justify-between text-[10px] text-emerald-400">
+                            <span>強化綠色區塊</span>
+                            <span id="greenVal">0</span>
+                        </div>
+                        <input type="range" id="greenRange" min="-100" max="100" value="0" class="w-full">
+                    </div>
+                    <div class="space-y-1">
+                        <div class="flex justify-between text-[10px] text-blue-400">
+                            <span>強化藍色區塊</span>
+                            <span id="blueVal">0</span>
+                        </div>
+                        <input type="range" id="blueRange" min="-100" max="100" value="0" class="w-full">
+                    </div>
+                    <div class="space-y-1">
+                        <div class="flex justify-between text-[10px] text-yellow-400">
+                            <span>強化黃色區塊</span>
+                            <span id="yellowVal">0</span>
+                        </div>
+                        <input type="range" id="yellowRange" min="-100" max="100" value="0" class="w-full">
+                    </div>
+                </div>
+            </section>
+
+            <!-- 細節 -->
+            <section class="space-y-4">
+                <h3 class="text-[10px] font-bold text-slate-500 uppercase tracking-widest border-b border-slate-700/50 pb-1">細節</h3>
+                <div class="space-y-3">
+                    <div class="space-y-1">
+                        <div class="flex justify-between text-[11px] text-slate-400">
+                            <span>模糊 Blur</span>
+                            <span id="blurVal">0px</span>
+                        </div>
+                        <input type="range" id="blurRange" min="0" max="10" value="0" step="0.5" class="w-full">
+                    </div>
+                    <div class="space-y-1">
+                        <div class="flex justify-between text-[11px] text-slate-400">
+                            <span>銳化 Sharpen</span>
+                            <span id="sharpenVal">0</span>
+                        </div>
+                        <input type="range" id="sharpenRange" min="0" max="100" value="0" class="w-full">
+                    </div>
+                </div>
+            </section>
+
+            <!-- 藝術濾鏡 -->
+            <section class="space-y-3 pb-6">
+                <h3 class="text-[10px] font-bold text-slate-500 uppercase tracking-widest border-b border-slate-700/50 pb-1">藝術濾鏡 (可疊加)</h3>
+                <div class="grid grid-cols-1 gap-2">
+                    <div id="filter-grayscale" class="filter-card bg-slate-800 p-3 rounded-xl flex items-center gap-3 border border-slate-700">
+                        <div class="w-8 h-8 rounded bg-slate-600 flex-shrink-0 flex items-center justify-center text-xs font-bold text-white">BW</div>
+                        <div class="flex-1 text-xs">經典黑白</div>
+                        <div class="status-dot w-2 h-2 rounded-full bg-slate-600"></div>
+                    </div>
+                    <div id="filter-sepia" class="filter-card bg-slate-800 p-3 rounded-xl flex items-center gap-3 border border-slate-700">
+                        <div class="w-8 h-8 rounded bg-amber-800 flex-shrink-0 flex items-center justify-center text-xs font-bold text-white">SE</div>
+                        <div class="flex-1 text-xs">復古棕褐</div>
+                        <div class="status-dot w-2 h-2 rounded-full bg-slate-600"></div>
+                    </div>
+                    <div id="filter-invert" class="filter-card bg-slate-800 p-3 rounded-xl flex items-center gap-3 border border-slate-700">
+                        <div class="w-8 h-8 rounded bg-indigo-600 flex-shrink-0 flex items-center justify-center text-xs font-bold text-white">IN</div>
+                        <div class="flex-1 text-xs">負片效果</div>
+                        <div class="status-dot w-2 h-2 rounded-full bg-slate-600"></div>
+                    </div>
+                    <div id="filter-emboss" class="filter-card bg-slate-800 p-3 rounded-xl flex items-center gap-3 border border-slate-700">
+                        <div class="w-8 h-8 rounded bg-emerald-700 flex-shrink-0 flex items-center justify-center text-xs font-bold text-white">EB</div>
+                        <div class="flex-1 text-xs">立體浮雕</div>
+                        <div class="status-dot w-2 h-2 rounded-full bg-slate-600"></div>
+                    </div>
+                </div>
+            </section>
+        </div>
+
+        <div class="p-4 border-t border-slate-700">
+            <button id="resetBtn" class="w-full text-xs text-red-400 hover:text-red-300 transition-colors">重設所有參數</button>
+        </div>
+    </aside>
+
+    <!-- 畫布區 -->
+    <main class="flex-1 relative flex flex-col bg-slate-950 overflow-hidden">
+        <div id="dropZone" class="flex-1 canvas-container flex items-center justify-center p-4">
+            <div id="placeholder" class="text-center space-y-4">
+                <div class="w-16 h-16 bg-slate-800 rounded-3xl mx-auto flex items-center justify-center border border-slate-700 shadow-xl">
+                    <svg class="w-8 h-8 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg>
+                </div>
+                <p class="text-slate-500 text-sm font-medium">拖放影像至此</p>
+            </div>
+            <canvas id="mainCanvas" class="hidden"></canvas>
+        </div>
+
+        <div id="compareContainer" class="absolute bottom-6 left-1/2 -translate-x-1/2 hidden">
+            <button id="compareBtn" class="bg-slate-800/80 backdrop-blur px-8 py-2.5 rounded-full text-[11px] font-bold border border-slate-700 shadow-2xl hover:bg-white hover:text-slate-900 transition-all active:scale-95">
+                按住看原圖
+            </button>
+        </div>
+    </main>
+
+    <!-- 歷史紀錄 -->
+    <aside class="w-full md:w-64 bg-[#1e293b] flex flex-col border-l border-slate-700">
+        <div class="p-5 border-b border-slate-700">
+            <h3 class="text-xs font-bold text-slate-400 mb-4 uppercase tracking-widest">歷史紀錄</h3>
+            <button id="undoBtn" class="w-full bg-slate-700 hover:bg-blue-600 text-white py-1.5 rounded text-[11px] transition-all disabled:opacity-30" disabled>
+                復原 (Undo)
+            </button>
+        </div>
+        <div id="historyList" class="flex-1 overflow-y-auto p-2 space-y-1"></div>
+        <div class="p-4 border-t border-slate-700 text-center">
+            <p class="text-[10px] text-slate-600 font-mono">HISTORY v4.1</p>
+        </div>
+    </aside>
+
+    <script>
+        const canvas = document.getElementById('mainCanvas');
+        const ctx = canvas.getContext('2d', { willReadFrequently: true });
+        const imageUpload = document.getElementById('imageUpload');
+        const downloadBtn = document.getElementById('downloadBtn');
+        const placeholder = document.getElementById('placeholder');
+        const compareBtn = document.getElementById('compareBtn');
+        const historyList = document.getElementById('historyList');
+        const undoBtn = document.getElementById('undoBtn');
+
+        const controls = {
+            brightness: { input: document.getElementById('brightnessRange'), display: document.getElementById('brightnessVal'), unit: '%' },
+            contrast: { input: document.getElementById('contrastRange'), display: document.getElementById('contrastVal'), unit: '%' },
+            temp: { input: document.getElementById('tempRange'), display: document.getElementById('tempVal'), unit: '' },
+            red: { input: document.getElementById('redRange'), display: document.getElementById('redVal'), unit: '' },
+            green: { input: document.getElementById('greenRange'), display: document.getElementById('greenVal'), unit: '' },
+            blue: { input: document.getElementById('blueRange'), display: document.getElementById('blueVal'), unit: '' },
+            yellow: { input: document.getElementById('yellowRange'), display: document.getElementById('yellowVal'), unit: '' },
+            blur: { input: document.getElementById('blurRange'), display: document.getElementById('blurVal'), unit: 'px' },
+            sharpen: { input: document.getElementById('sharpenRange'), display: document.getElementById('sharpenVal'), unit: '' }
+        };
+
+        let originalImage = null; 
+        let sourceCanvas = document.createElement('canvas'); 
+        let history = [];
+        let currentStateIndex = -1;
+
+        let state = {
+            rotation: 0, flipped: false, brightness: 0, contrast: 0, 
+            temp: 0, red: 0, green: 0, blue: 0, yellow: 0, 
+            blur: 0, sharpen: 0, grayscale: false, sepia: false, invert: false, emboss: false
+        };
+
+        // --- 事件處理 ---
+
+        imageUpload.addEventListener('change', handleImageUpload);
+
+        Object.keys(controls).forEach(key => {
+            controls[key].input.addEventListener('change', () => {
+                state[key] = parseFloat(controls[key].input.value);
+                addHistory(`調整 ${key}`);
+                applyEffects();
+            });
+            controls[key].input.addEventListener('input', () => {
+                state[key] = parseFloat(controls[key].input.value);
+                controls[key].display.innerText = `${state[key]}${controls[key].unit}`;
+                applyEffects();
+            });
+        });
+
+        ['grayscale', 'sepia', 'invert', 'emboss'].forEach(f => {
+            document.getElementById(`filter-${f}`).addEventListener('click', () => {
+                state[f] = !state[f];
+                addHistory(`${state[f] ? '套用' : '移除'}濾鏡`);
+                updateUI();
+                applyEffects();
+            });
+        });
+
+        document.getElementById('rotateLeftBtn').addEventListener('click', () => { state.rotation = (state.rotation - 90 + 360) % 360; addHistory("向左旋轉"); updateTransformations(); });
+        document.getElementById('rotateRightBtn').addEventListener('click', () => { state.rotation = (state.rotation + 90) % 360; addHistory("向右旋轉"); updateTransformations(); });
+        document.getElementById('flipBtn').addEventListener('click', () => { state.flipped = !state.flipped; addHistory("翻轉"); updateTransformations(); });
+
+        document.getElementById('resetBtn').addEventListener('click', () => {
+            state = { rotation: 0, flipped: false, brightness: 0, contrast: 0, temp: 0, red: 0, green: 0, blue: 0, yellow: 0, blur: 0, sharpen: 0, grayscale: false, sepia: false, invert: false, emboss: false };
+            addHistory("重設工作台");
+            updateUI();
+            updateTransformations();
+        });
+
+        undoBtn.addEventListener('click', () => {
+            if (currentStateIndex < history.length - 1) {
+                currentStateIndex++;
+                restoreStateFromHistory(currentStateIndex);
+            }
+        });
+
+        compareBtn.addEventListener('mousedown', () => {
+            if (!originalImage) return;
+            canvas.width = originalImage.width; canvas.height = originalImage.height;
+            ctx.filter = 'none'; ctx.drawImage(originalImage, 0, 0);
+        });
+        compareBtn.addEventListener('mouseup', applyEffects);
+        compareBtn.addEventListener('mouseleave', applyEffects);
+
+        // --- 核心運算 ---
+
+        function handleImageUpload(e) {
+            const file = e.target.files[0];
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = (event) => {
+                const img = new Image();
+                img.onload = () => {
+                    originalImage = img;
+                    state = { rotation: 0, flipped: false, brightness: 0, contrast: 0, temp: 0, red: 0, green: 0, blue: 0, yellow: 0, blur: 0, sharpen: 0, grayscale: false, sepia: false, invert: false, emboss: false };
+                    history = []; currentStateIndex = -1;
+                    addHistory("載入影像");
+                    updateTransformations();
+                    placeholder.classList.add('hidden');
+                    canvas.classList.remove('hidden');
+                    downloadBtn.disabled = false; downloadBtn.classList.remove('opacity-50');
+                    document.getElementById('compareContainer').classList.remove('hidden');
+                };
+                img.src = event.target.result;
+            };
+            reader.readAsDataURL(file);
+        }
+
+        function updateTransformations() {
+            if (!originalImage) return;
+            const isPortrait = state.rotation === 90 || state.rotation === 270;
+            sourceCanvas.width = isPortrait ? originalImage.height : originalImage.width;
+            sourceCanvas.height = isPortrait ? originalImage.width : originalImage.height;
+            const sctx = sourceCanvas.getContext('2d');
+            sctx.save();
+            sctx.translate(sourceCanvas.width / 2, sourceCanvas.height / 2);
+            sctx.rotate((state.rotation * Math.PI) / 180);
+            if (state.flipped) sctx.scale(-1, 1);
+            sctx.drawImage(originalImage, -originalImage.width / 2, -originalImage.height / 2);
+            sctx.restore();
+            applyEffects();
+        }
+
+        function applyEffects() {
+            if (!originalImage) return;
+
+            canvas.width = sourceCanvas.width;
+            canvas.height = sourceCanvas.height;
+            ctx.filter = `blur(${state.blur}px)`;
+            ctx.drawImage(sourceCanvas, 0, 0);
+            ctx.filter = 'none';
+
+            let imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+            let data = imageData.data;
+            
+            const bOffset = (state.brightness / 100) * 128;
+            const contrastFactor = (259 * (state.contrast + 255)) / (255 * (259 - state.contrast));
+            
+            // 冷暖色調
+            const t = state.temp;
+            const rTemp = t > 0 ? t : 0;
+            const bTemp = t < 0 ? -t : 0;
+
+            for (let i = 0; i < data.length; i += 4) {
+                let r = data[i], g = data[i + 1], b = data[i + 2];
+                
+                // 1. 曝光與對比
+                r = contrastFactor * (r + bOffset - 128) + 128 + rTemp;
+                g = contrastFactor * (g + bOffset - 128) + 128;
+                b = contrastFactor * (b + bOffset - 128) + 128 + bTemp;
+
+                // 2. 智慧色彩區塊微調
+                const rBoost = state.red, gBoost = state.green, bBoost = state.blue, yBoost = state.yellow;
+                
+                // 紅色區塊
+                if (r > g + 20 && r > b + 20) {
+                    const factor = (r - Math.max(g, b)) / 255;
+                    r += rBoost * factor;
+                }
+                // 綠色區塊
+                if (g > r + 20 && g > b + 20) {
+                    const factor = (g - Math.max(r, b)) / 255;
+                    g += gBoost * factor;
+                }
+                // 藍色區塊
+                if (b > r + 20 && b > g + 20) {
+                    const factor = (b - Math.max(r, g)) / 255;
+                    b += bBoost * factor;
+                }
+                // 黃色區塊
+                if (r > b + 30 && g > b + 30 && Math.abs(r - g) < 50) {
+                    const factor = (Math.min(r, g) - b) / 255;
+                    r += yBoost * factor * 0.8;
+                    g += yBoost * factor * 0.8;
+                }
+
+                // 3. 濾鏡
+                if (state.invert) { r = 255 - r; g = 255 - g; b = 255 - b; }
+                if (state.sepia) {
+                    const tr = (r * 0.393) + (g * 0.769) + (b * 0.189);
+                    const tg = (r * 0.349) + (g * 0.686) + (b * 0.168);
+                    const tb = (r * 0.272) + (g * 0.534) + (b * 0.131);
+                    r = tr; g = tg; b = tb;
+                }
+                if (state.grayscale) {
+                    const avg = (r * 0.299 + g * 0.587 + b * 0.114);
+                    r = g = b = avg;
+                }
+
+                data[i] = Math.max(0, Math.min(255, r));
+                data[i+1] = Math.max(0, Math.min(255, g));
+                data[i+2] = Math.max(0, Math.min(255, b));
+            }
+            ctx.putImageData(imageData, 0, 0);
+
+            // 4. 卷積矩陣運算 (銳化與浮雕)
+            if (state.sharpen > 0 || state.emboss) {
+                let kernel = [0, 0, 0, 0, 1, 0, 0, 0, 0];
+                if (state.sharpen > 0 && !state.emboss) {
+                    const s = state.sharpen / 100;
+                    kernel = [0, -s, 0, -s, 1 + 4*s, -s, 0, -s, 0];
+                } else if (state.emboss) {
+                    kernel = [-2, -1, 0, -1, 1, 1, 0, 1, 2];
+                }
+                applyConvolution(kernel);
+            }
+        }
+
+        function applyConvolution(kernel) {
+            const side = 3; const halfSide = 1;
+            const src = ctx.getImageData(0, 0, canvas.width, canvas.height);
+            const sw = src.width, sh = src.height;
+            const output = ctx.createImageData(sw, sh);
+            const dst = output.data, srcData = src.data;
+            for (let y = 0; y < sh; y++) {
+                for (let x = 0; x < sw; x++) {
+                    const dstOff = (y * sw + x) * 4;
+                    let r = 0, g = 0, b = 0;
+                    for (let cy = 0; cy < side; cy++) {
+                        for (let cx = 0; cx < side; cx++) {
+                            const scy = Math.min(sh-1, Math.max(0, y + cy - halfSide));
+                            const scx = Math.min(sw-1, Math.max(0, x + cx - halfSide));
+                            const srcOff = (scy * sw + scx) * 4;
+                            const wt = kernel[cy * side + cx];
+                            r += srcData[srcOff] * wt; g += srcData[srcOff + 1] * wt; b += srcData[srcOff + 2] * wt;
+                        }
+                    }
+                    dst[dstOff] = Math.max(0, Math.min(255, r)); 
+                    dst[dstOff+1] = Math.max(0, Math.min(255, g)); 
+                    dst[dstOff+2] = Math.max(0, Math.min(255, b)); 
+                    dst[dstOff+3] = 255;
+                }
+            }
+            ctx.putImageData(output, 0, 0);
+        }
+
+        // --- UI 同步 ---
+
+        function updateUI() {
+            ['grayscale', 'sepia', 'invert', 'emboss'].forEach(f => {
+                const el = document.getElementById(`filter-${f}`);
+                const dot = el.querySelector('.status-dot');
+                if (state[f]) { el.classList.add('active'); dot.classList.replace('bg-slate-600', 'bg-blue-400'); }
+                else { el.classList.remove('active'); dot.classList.replace('bg-blue-400', 'bg-slate-600'); }
+            });
+            Object.keys(controls).forEach(key => {
+                controls[key].input.value = state[key];
+                controls[key].display.innerText = `${state[key]}${controls[key].unit}`;
+            });
+        }
+
+        function addHistory(action) {
+            const now = new Date();
+            const timeStr = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}`;
+            if (currentStateIndex >= 0) history = history.slice(currentStateIndex);
+            history.unshift({ action, time: timeStr, state: JSON.parse(JSON.stringify(state)) });
+            if (history.length > 20) history.pop();
+            currentStateIndex = 0;
+            renderHistory();
+        }
+
+        function renderHistory() {
+            historyList.innerHTML = history.map((item, idx) => `
+                <div class="history-item p-3 text-[11px] cursor-pointer mb-1 ${idx === currentStateIndex ? 'active-state' : ''}" onclick="restoreStateFromHistory(${idx})">
+                    <div class="flex justify-between">
+                        <span class="${idx === currentStateIndex ? 'text-blue-400' : 'text-slate-400'} font-bold">${item.action}</span>
+                        <span class="text-slate-600">${item.time}</span>
+                    </div>
+                </div>
+            `).join('');
+            undoBtn.disabled = currentStateIndex >= history.length - 1;
+        }
+
+        function restoreStateFromHistory(idx) {
+            currentStateIndex = idx;
+            state = JSON.parse(JSON.stringify(history[idx].state));
+            updateUI(); updateTransformations(); renderHistory();
+        }
+
+        downloadBtn.addEventListener('click', () => {
+            const link = document.createElement('a');
+            link.download = `IMGLab_v4.1_${Date.now()}.png`;
+            link.href = canvas.toDataURL('image/png');
+            link.click();
+        });
+
+        const dropZone = document.getElementById('dropZone');
+        dropZone.addEventListener('dragover', (e) => { e.preventDefault(); dropZone.classList.add('bg-slate-900/50'); });
+        dropZone.addEventListener('drop', (e) => {
+            e.preventDefault();
+            const file = e.dataTransfer.files[0];
+            if (file && file.type.startsWith('image/')) handleImageUpload({ target: { files: [file] } });
+        });
+    </script>
+</body>
+</html>

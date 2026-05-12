@@ -1,0 +1,426 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>3x3 數字推盤 - 柔和粉紫版</title>
+    <style>
+        :root {
+            --bg-color: #f3f0f7;
+            --container-bg: #ffffff;
+            --text-color: #6d5d83;
+            --accent-purple: #b39ddb;
+            --tile-bg: #e0bbe4;
+            --tile-text: #ffffff;
+            --shadow: 0 8px 30px rgba(179, 157, 219, 0.2);
+        }
+
+        body {
+            margin: 0;
+            padding: 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            background-color: var(--bg-color);
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            color: var(--text-color);
+            overflow: hidden;
+        }
+
+        /* 煙火畫布層 */
+        #fireworks-canvas {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            z-index: 99;
+        }
+
+        .game-container {
+            background: var(--container-bg);
+            padding: 2rem;
+            border-radius: 24px;
+            box-shadow: var(--shadow);
+            text-align: center;
+            max-width: 400px;
+            width: 90%;
+            position: relative;
+            z-index: 10;
+        }
+
+        h1 {
+            margin-top: 0;
+            font-weight: 300;
+            letter-spacing: 2px;
+            color: var(--accent-purple);
+        }
+
+        .stats {
+            margin-bottom: 1rem;
+            display: flex;
+            justify-content: space-around;
+            font-size: 1rem;
+        }
+
+        .stat-item {
+            background: #f8f6fb;
+            padding: 5px 15px;
+            border-radius: 12px;
+        }
+
+        .puzzle-board {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            grid-template-rows: repeat(3, 1fr);
+            gap: 10px;
+            background-color: #f8f6fb;
+            padding: 10px;
+            border-radius: 12px;
+            aspect-ratio: 1 / 1;
+            margin: 0 auto;
+            position: relative;
+        }
+
+        .tile {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            background-color: var(--tile-bg);
+            color: var(--tile-text);
+            font-size: 2rem;
+            font-weight: bold;
+            border-radius: 8px;
+            cursor: pointer;
+            user-select: none;
+            transition: transform 0.2s, background-color 0.2s, box-shadow 0.2s;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.05);
+        }
+
+        .tile:hover {
+            background-color: #d1a6d9;
+            transform: scale(1.02);
+        }
+
+        .tile.empty {
+            background-color: transparent;
+            box-shadow: none;
+            cursor: default;
+        }
+
+        .controls {
+            margin-top: 1.5rem;
+        }
+
+        .btn-reset {
+            background-color: var(--accent-purple);
+            color: white;
+            border: none;
+            padding: 12px 30px;
+            border-radius: 50px;
+            font-size: 1rem;
+            cursor: pointer;
+            transition: opacity 0.2s, transform 0.1s;
+            box-shadow: 0 4px 12px rgba(179, 157, 219, 0.4);
+        }
+
+        .btn-reset:hover {
+            opacity: 0.9;
+            transform: translateY(-2px);
+        }
+
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.4);
+            justify-content: center;
+            align-items: center;
+            z-index: 100;
+        }
+
+        .modal-content {
+            background: white;
+            padding: 2.5rem;
+            border-radius: 20px;
+            text-align: center;
+            box-shadow: var(--shadow);
+            animation: popIn 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+        }
+
+        @keyframes popIn {
+            from { transform: scale(0.5); opacity: 0; }
+            to { transform: scale(1); opacity: 1; }
+        }
+    </style>
+</head>
+<body>
+
+<canvas id="fireworks-canvas"></canvas>
+
+<div class="game-container">
+    <h1>Sliding Puzzle</h1>
+    <div class="stats">
+        <div class="stat-item">當前步數：<span id="move-count">0</span></div>
+        <div class="stat-item">最優步數：<span id="best-move-count">...</span></div>
+    </div>
+    
+    <div class="puzzle-board" id="board"></div>
+
+    <div class="controls">
+        <button class="btn-reset" onclick="initGame()">重新打亂</button>
+    </div>
+</div>
+
+<div id="win-modal" class="modal">
+    <div class="modal-content">
+        <h2 style="color: var(--accent-purple);">恭喜完成！✨</h2>
+        <p>你花了 <span id="final-moves">0</span> 步。</p>
+        <p style="font-size: 0.9rem; color: #888;">(最少步數為 <span id="ref-best-moves">0</span> 步)</p>
+        <button class="btn-reset" onclick="closeModal()">再玩一次</button>
+    </div>
+</div>
+
+<script>
+    const boardElement = document.getElementById('board');
+    const moveDisplay = document.getElementById('move-count');
+    const bestMoveDisplay = document.getElementById('best-move-count');
+    const winModal = document.getElementById('win-modal');
+    const finalMovesDisplay = document.getElementById('final-moves');
+    const refBestMovesDisplay = document.getElementById('ref-best-moves');
+    const fwCanvas = document.getElementById('fireworks-canvas');
+    const fwCtx = fwCanvas.getContext('2d');
+
+    let tiles = []; 
+    let moves = 0;
+    let optimalMoves = 0;
+    const SIZE = 3;
+    const WIN_PATTERN = [1, 2, 3, 4, 5, 6, 7, 8, 0];
+
+    // 煙火粒子陣列
+    let particles = [];
+    let fwAnimationId = null;
+
+    function initGame() {
+        moves = 0;
+        moveDisplay.textContent = moves;
+        bestMoveDisplay.textContent = "...";
+        winModal.style.display = 'none';
+        stopFireworks();
+        
+        generateSolvableTiles();
+        renderBoard();
+        
+        setTimeout(() => {
+            optimalMoves = solveAStar(tiles);
+            bestMoveDisplay.textContent = optimalMoves;
+        }, 50);
+    }
+
+    function generateSolvableTiles() {
+        tiles = [...WIN_PATTERN];
+        let emptyIdx = 8;
+        for (let i = 0; i < 50; i++) {
+            const neighbors = getNeighbors(emptyIdx);
+            const randomNeighbor = neighbors[Math.floor(Math.random() * neighbors.length)];
+            [tiles[emptyIdx], tiles[randomNeighbor]] = [tiles[randomNeighbor], tiles[emptyIdx]];
+            emptyIdx = randomNeighbor;
+        }
+    }
+
+    function getNeighbors(idx) {
+        const neighbors = [];
+        const r = Math.floor(idx / SIZE);
+        const c = idx % SIZE;
+        if (r > 0) neighbors.push(idx - SIZE);
+        if (r < SIZE - 1) neighbors.push(idx + SIZE);
+        if (c > 0) neighbors.push(idx - 1);
+        if (c < SIZE - 1) neighbors.push(idx + 1);
+        return neighbors;
+    }
+
+    // --- A* 演算法 ---
+    function getManhattanDistance(state) {
+        let distance = 0;
+        for (let i = 0; i < state.length; i++) {
+            const val = state[i];
+            if (val !== 0) {
+                const targetIdx = val - 1;
+                const currentR = Math.floor(i / SIZE), currentC = i % SIZE;
+                const targetR = Math.floor(targetIdx / SIZE), targetC = targetIdx % SIZE;
+                distance += Math.abs(currentR - targetR) + Math.abs(currentC - targetC);
+            }
+        }
+        return distance;
+    }
+
+    function solveAStar(initialState) {
+        const goalStr = WIN_PATTERN.join(',');
+        const startStr = initialState.join(',');
+        if (startStr === goalStr) return 0;
+        const openSet = [{ state: initialState, g: 0, h: getManhattanDistance(initialState) }];
+        const closedSet = new Set();
+        closedSet.add(startStr);
+        while (openSet.length > 0) {
+            openSet.sort((a, b) => (a.g + a.h) - (b.g + b.h));
+            const current = openSet.shift();
+            if (current.state.join(',') === goalStr) return current.g;
+            const emptyIdx = current.state.indexOf(0);
+            const nextIndices = getNeighbors(emptyIdx);
+            for (let nextIdx of nextIndices) {
+                const nextState = [...current.state];
+                [nextState[emptyIdx], nextState[nextIdx]] = [nextState[nextIdx], nextState[emptyIdx]];
+                const nextStr = nextState.join(',');
+                if (!closedSet.has(nextStr)) {
+                    closedSet.add(nextStr);
+                    openSet.push({ state: nextState, g: current.g + 1, h: getManhattanDistance(nextState) });
+                }
+            }
+            if (closedSet.size > 5000) break;
+        }
+        return "無法計算";
+    }
+
+    // --- 煙火特效系統升級版 ---
+    function resizeCanvas() {
+        fwCanvas.width = window.innerWidth;
+        fwCanvas.height = window.innerHeight;
+    }
+
+    class Particle {
+        constructor(x, y, color) {
+            this.x = x;
+            this.y = y;
+            this.color = color;
+            // 增加初始速度範圍，讓煙火炸得更開
+            const angle = Math.random() * Math.PI * 2;
+            const power = Math.random() * 6 + 2;
+            this.velocity = {
+                x: Math.cos(angle) * power,
+                y: Math.sin(angle) * power
+            };
+            this.alpha = 1;
+            this.friction = 0.96; // 稍微增加一點摩擦力讓粒子有緩動感
+            this.gravity = 0.12;
+            this.size = Math.random() * 3 + 1; // 隨機大小
+        }
+        draw() {
+            fwCtx.save();
+            fwCtx.globalAlpha = this.alpha;
+            fwCtx.beginPath();
+            fwCtx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+            fwCtx.fillStyle = this.color;
+            // 加入發光效果
+            fwCtx.shadowBlur = 10;
+            fwCtx.shadowColor = this.color;
+            fwCtx.fill();
+            fwCtx.restore();
+        }
+        update() {
+            this.velocity.x *= this.friction;
+            this.velocity.y *= this.friction;
+            this.velocity.y += this.gravity;
+            this.x += this.velocity.x;
+            this.y += this.velocity.y;
+            this.alpha -= 0.01; // 衰減變慢，拖尾更長
+        }
+    }
+
+    function createFirework(x, y) {
+        const colors = ['#FFB7B2', '#B2CEFE', '#B2F2BB', '#FFFFB2', '#E0BBE4', '#FFCCF9', '#FFFFFF'];
+        const color = colors[Math.floor(Math.random() * colors.length)];
+        // 增加單次煙火粒子數量
+        const particleCount = 80;
+        for (let i = 0; i < particleCount; i++) {
+            particles.push(new Particle(x, y, color));
+        }
+    }
+
+    function animateFireworks() {
+        fwAnimationId = requestAnimationFrame(animateFireworks);
+        
+        // 這裡不完全 Clear，而是蓋上一層半透明黑/底色來造成「拖尾」效果
+        fwCtx.fillStyle = 'rgba(243, 240, 247, 0.2)'; 
+        fwCtx.fillRect(0, 0, fwCanvas.width, fwCanvas.height);
+        
+        // 提高自動噴發頻率
+        if (Math.random() < 0.08) {
+            createFirework(Math.random() * fwCanvas.width, Math.random() * (fwCanvas.height * 0.7));
+        }
+
+        particles.forEach((p, index) => {
+            if (p.alpha > 0) {
+                p.update();
+                p.draw();
+            } else {
+                particles.splice(index, 1);
+            }
+        });
+    }
+
+    function startFireworks() {
+        resizeCanvas();
+        particles = [];
+        animateFireworks();
+    }
+
+    function stopFireworks() {
+        if (fwAnimationId) {
+            cancelAnimationFrame(fwAnimationId);
+            fwAnimationId = null;
+        }
+        fwCtx.clearRect(0, 0, fwCanvas.width, fwCanvas.height);
+    }
+
+    // --- 遊戲互動 ---
+    function renderBoard() {
+        boardElement.innerHTML = '';
+        tiles.forEach((value, index) => {
+            const tileDiv = document.createElement('div');
+            tileDiv.className = 'tile' + (value === 0 ? ' empty' : '');
+            tileDiv.textContent = value === 0 ? '' : value;
+            tileDiv.onclick = () => handleTileClick(index);
+            boardElement.appendChild(tileDiv);
+        });
+    }
+
+    function handleTileClick(index) {
+        const value = tiles[index];
+        if (value === 0) return;
+        const neighbors = getNeighbors(index);
+        const emptyIdx = tiles.indexOf(0);
+        if (neighbors.includes(emptyIdx)) {
+            tiles[emptyIdx] = value;
+            tiles[index] = 0;
+            moves++;
+            moveDisplay.textContent = moves;
+            renderBoard();
+            checkWin();
+        }
+    }
+
+    function checkWin() {
+        const isWin = tiles.every((val, index) => val === WIN_PATTERN[index]);
+        if (isWin) {
+            setTimeout(() => {
+                finalMovesDisplay.textContent = moves;
+                refBestMovesDisplay.textContent = optimalMoves;
+                winModal.style.display = 'flex';
+                startFireworks();
+            }, 200);
+        }
+    }
+
+    function closeModal() {
+        winModal.style.display = 'none';
+        initGame();
+    }
+
+    window.addEventListener('resize', resizeCanvas);
+    window.onload = initGame;
+</script>
+
+</body>
+</html>
